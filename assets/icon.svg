@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Chess8an icon">
+  <rect width="512" height="512" rx="72" fill="#f2c94c"/>
+  <rect x="72" y="72" width="368" height="368" fill="#fff9e7" stroke="#242013" stroke-width="24"/>
+  <path d="M168 384h176v-42l-38-16 18-98c28-18 42-41 42-70 0-58-47-98-110-98s-110 40-110 98c0 29 14 52 42 70l18 98-38 16v42Z" fill="#242013"/>
+  <circle cx="256" cy="143" r="34" fill="#fff9e7"/>
+  <path d="M207 238h98M196 286h120" stroke="#f2c94c" stroke-width="22" stroke-linecap="round"/>
+</svg>
