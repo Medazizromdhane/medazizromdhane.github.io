@@ -118,6 +118,10 @@ textarea:disabled {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  padding: 5px;
+  border: 1px solid rgba(36, 32, 19, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 253, 244, 0.68);
 }
 
 .tab-button,
@@ -138,6 +142,19 @@ textarea:disabled {
   background: var(--dark);
   color: #fff9e7;
   box-shadow: 3px 3px 0 var(--gold);
+}
+
+.tab-button {
+  box-shadow: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.tab-button:hover {
+  transform: translateY(-1px);
+  background: rgba(242, 201, 76, 0.22);
 }
 
 .primary-button.alt {
@@ -427,6 +444,40 @@ textarea:focus {
 
 .arrow-best {
   stroke: rgba(32, 111, 70, 0.88);
+}
+
+.arrows path {
+  fill: none;
+  stroke-width: 3.4;
+  stroke-linecap: round;
+  filter: url(#arrow-shadow);
+}
+
+.arrow-played {
+  stroke-dasharray: 1 1.8;
+}
+
+.arrow-best {
+  stroke-width: 4.2;
+}
+
+.arrow-label {
+  paint-order: stroke;
+  stroke: rgba(255, 249, 231, 0.92);
+  stroke-width: 3px;
+  font-size: 4px;
+  font-weight: 900;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  letter-spacing: 0;
+}
+
+.played-label {
+  fill: #8b4b05;
+}
+
+.best-label {
+  fill: var(--green);
 }
 
 .analysis-header {
@@ -882,6 +933,7 @@ textarea:focus {
 .game-header {
   display: flex;
   align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 4px;
 }
@@ -897,6 +949,116 @@ textarea:focus {
   font-size: 13px;
   color: var(--muted);
   font-weight: 600;
+}
+
+.brilliance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid rgba(36, 32, 19, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 253, 244, 0.82);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.brilliance-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(36, 32, 19, 0.1);
+  color: var(--dark);
+  font-size: 11px;
+}
+
+.brilliance-pill.brilliant {
+  border-color: rgba(47, 111, 78, 0.36);
+  background: rgba(47, 111, 78, 0.09);
+  color: var(--green);
+}
+
+.brilliance-pill.brilliant .brilliance-icon {
+  background: var(--green);
+  color: #fff9e7;
+  box-shadow: 0 0 0 3px rgba(47, 111, 78, 0.12);
+}
+
+.brilliance-pill.none .brilliance-icon {
+  background: rgba(102, 91, 67, 0.14);
+}
+
+.brilliance-pill.scanning .brilliance-icon {
+  animation: badgePulse 1s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%, 100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.review-controls {
+  display: grid;
+  grid-template-columns: 42px 42px minmax(120px, 1fr) 42px 42px auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(36, 32, 19, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 253, 244, 0.72);
+}
+
+.review-icon,
+.review-jump {
+  min-height: 38px;
+  border: 1px solid rgba(36, 32, 19, 0.72);
+  border-radius: 7px;
+  background: #fffdf4;
+  color: var(--dark);
+  font-weight: 900;
+}
+
+.review-icon {
+  width: 42px;
+  padding: 0;
+  font-size: 18px;
+}
+
+.review-jump {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.review-status {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.review-status strong,
+.review-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-status strong {
+  font-size: 14px;
+}
+
+.review-status span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* Analysis header enhancements */
@@ -1009,6 +1171,14 @@ textarea:focus {
   .move-navigation {
     grid-template-columns: 1fr 1fr;
   }
+
+  .review-controls {
+    grid-template-columns: 42px 42px 1fr 42px 42px;
+  }
+
+  .review-jump {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1036,6 +1206,28 @@ textarea:focus {
 
   .board-wrap {
     box-shadow: 5px 5px 0 rgba(36, 32, 19, 0.88);
+  }
+
+  .review-controls {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .review-status {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .review-icon,
+  .review-jump {
+    width: auto;
+  }
+
+  .review-jump {
+    grid-column: span 2;
+  }
+
+  .brilliance-pill span:last-child {
+    display: none;
   }
 
   .move-navigation {

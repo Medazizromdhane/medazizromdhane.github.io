@@ -56,6 +56,7 @@ const state = {
   boardFlipped: false,
   saved: loadSaved(),
   working: false,
+  scanningGames: false,
   progress: { done: 0, total: 0, text: "" },
   toast: ""
 };
@@ -666,6 +667,55 @@ function gameTitle(headers = {}) {
   return `${white} vs ${black}${date}`;
 }
 
+function scanGameBrilliance(game) {
+  const pgn = game?.pgn || "";
+  if (!pgn.trim()) return { state: "unknown", label: "No PGN", count: 0 };
+  if (/brilliant/i.test(pgn) || /(^|\s)[KQRBNOa-h][^\s{}()[\]]*!!(?=\s|$)/.test(pgn)) {
+    return { state: "brilliant", label: "Brilliant marker", count: 1 };
+  }
+  try {
+    const parsed = playPgn(pgn);
+    let count = 0;
+    for (const played of parsed.moves.slice(0, 72)) {
+      const candidates = rootCandidates(played.before, 1).slice(0, 3);
+      if (!candidates.length) continue;
+      const color = colorOf(played.move.piece);
+      const actual = {
+        move: played.move,
+        san: played.san,
+        score: search(played.after, 0)
+      };
+      const best = candidates[0];
+      const loss = Math.max(0, scoreForMover(best.score - actual.score, color));
+      const capturedValue = played.move.capture ? VALUES[played.move.capture.toUpperCase()] || 0 : 0;
+      const moverValue = VALUES[played.move.piece.toUpperCase()] || 0;
+      const sacrificeLike = played.move.promotion || (played.move.capture && capturedValue <= moverValue + 120);
+      const tacticalSwing = Math.abs(scoreForMover(actual.score, color)) >= 120;
+      if (loss <= 22 && sacrificeLike && tacticalSwing) count += 1;
+      if (count >= 2) break;
+    }
+    return count
+      ? { state: "brilliant", label: `${count} likely brilliant`, count }
+      : { state: "none", label: "No brilliant found", count: 0 };
+  } catch {
+    return { state: "unknown", label: "Scan unavailable", count: 0 };
+  }
+}
+
+async function enrichGameInsights(games) {
+  state.scanningGames = true;
+  render();
+  for (let i = 0; i < games.length; i += 1) {
+    games[i].chess8anInsight = scanGameBrilliance(games[i]);
+    if (i % 4 === 3) {
+      render();
+      await pause();
+    }
+  }
+  state.scanningGames = false;
+  render();
+}
+
 function pause() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -811,7 +861,7 @@ function renderImport() {
       </div>
       <aside class="panel">
         <h2>Imported games</h2>
-        <p class="section-note">Choose a game from an archive, then analyze it locally in your browser.</p>
+        <p class="section-note">Choose a game from an archive, then analyze it locally in your browser. ${state.scanningGames ? "Chess8an is scanning the list for brilliant markers now." : "Each game shows whether a brilliant marker or likely brilliant candidate was found."}</p>
         <div class="game-list">
           ${state.games.length ? state.games.map(renderGameCard).join("") : `<p class="small-note">No archive loaded yet.</p>`}
         </div>
@@ -865,6 +915,13 @@ function renderAnalyzeControls(action) {
   `;
 }
 
+function gameInsightBadge(game) {
+  const insight = game.chess8anInsight || { state: state.scanningGames ? "scanning" : "unknown", label: state.scanningGames ? "Scanning" : "Not scanned", count: 0 };
+  const label = insight.state === "brilliant" ? "Brilliant found" : insight.label;
+  const text = insight.state === "brilliant" ? "!!" : insight.state === "none" ? "0" : "...";
+  return `<span class="brilliance-pill ${escapeAttr(insight.state)}" title="${escapeAttr(insight.label)}"><span class="brilliance-icon">${text}</span><span>${escapeHtml(label)}</span></span>`;
+}
+
 function renderGameCard(game, index) {
   const white = game.white?.username || "White";
   const black = game.black?.username || "Black";
@@ -879,6 +936,7 @@ function renderGameCard(game, index) {
           <strong class="game-players">${escapeHtml(white)} vs ${escapeHtml(black)}</strong>
           <p class="game-result-badge">${escapeHtml(resultDisplay)}</p>
         </div>
+        ${gameInsightBadge(game)}
       </div>
       <div class="game-meta">
         <span class="pill" title="Game time format">${escapeHtml(timeClass)}</span>
@@ -930,6 +988,7 @@ function renderAnalysis() {
             <button class="ghost-button" data-action="save-analysis" type="button">Save</button>
             <button class="ghost-button" data-action="export-json" type="button">Export JSON</button>
           </div>
+          ${item ? renderReviewControls(item) : ""}
           <div class="keyboard-hint">
             <span class="hint-small">Use ← → or P/N keys to navigate moves • Home/End for first/last move</span>
           </div>
@@ -946,6 +1005,24 @@ function renderAnalysis() {
         </article>
       </section>
     </section>
+  `;
+}
+
+function renderReviewControls(item) {
+  const canPrev = item.index > 0;
+  const canNext = item.index < state.analysis.items.length - 1;
+  return `
+    <div class="review-controls" aria-label="Analysis navigation">
+      <button class="review-icon" data-action="first-move" type="button" ${!canPrev ? "disabled" : ""} title="First move">|&lt;</button>
+      <button class="review-icon" data-action="prev-move" type="button" ${!canPrev ? "disabled" : ""} title="Previous move">‹</button>
+      <div class="review-status">
+        <strong>${item.moveNumber}${item.color === "b" ? "..." : "."} ${escapeHtml(item.playedSan)}</strong>
+        <span>${escapeHtml(item.classification)} - better: ${escapeHtml(item.best.san)}</span>
+      </div>
+      <button class="review-icon" data-action="next-move" type="button" ${!canNext ? "disabled" : ""} title="Next move">›</button>
+      <button class="review-icon" data-action="last-move" type="button" ${!canNext ? "disabled" : ""} title="Last move">&gt;|</button>
+      <button class="review-jump" data-action="next-critical" type="button" title="Jump to next inaccuracy, mistake, or blunder">Next critical</button>
+    </div>
   `;
 }
 
@@ -1000,23 +1077,48 @@ function squareCenter(index) {
   };
 }
 
+function curvedArrowPath(from, to, bend = 8) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  const ox = (-dy / length) * bend;
+  const oy = (dx / length) * bend;
+  return {
+    d: `M ${from.x} ${from.y} Q ${mx + ox} ${my + oy} ${to.x} ${to.y}`,
+    labelX: mx + ox * 0.72,
+    labelY: my + oy * 0.72
+  };
+}
+
 function renderArrows(item) {
   const playedA = squareCenter(item.move.move.from);
   const playedB = squareCenter(item.move.move.to);
   const bestA = squareCenter(item.best.move.from);
   const bestB = squareCenter(item.best.move.to);
+  const sameMove = item.move.move.from === item.best.move.from && item.move.move.to === item.best.move.to;
+  const playedPath = curvedArrowPath(playedA, playedB, sameMove ? -7 : -8);
+  const bestPath = curvedArrowPath(bestA, bestB, sameMove ? 7 : 8);
   return `
     <svg class="arrows" viewBox="0 0 100 100" aria-hidden="true">
       <defs>
-        <marker id="arrow-played" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
-          <path d="M0,0 L5,2.5 L0,5 Z" fill="rgba(207,116,8,.82)"></path>
+        <filter id="arrow-shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0.5" dy="1" stdDeviation="0.8" flood-color="rgba(0,0,0,.35)"></feDropShadow>
+        </filter>
+        <marker id="arrow-played" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 Z" fill="rgba(214,128,14,.88)"></path>
         </marker>
-        <marker id="arrow-best" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
-          <path d="M0,0 L5,2.5 L0,5 Z" fill="rgba(32,111,70,.88)"></path>
+        <marker id="arrow-best" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+          <path d="M0,0 L7,3.5 L0,7 Z" fill="rgba(25,112,69,.95)"></path>
         </marker>
       </defs>
-      <line class="arrow-played" x1="${playedA.x}" y1="${playedA.y}" x2="${playedB.x}" y2="${playedB.y}" stroke-width="2.8" stroke-linecap="round" marker-end="url(#arrow-played)"></line>
-      <line class="arrow-best" x1="${bestA.x}" y1="${bestA.y}" x2="${bestB.x}" y2="${bestB.y}" stroke-width="2.8" stroke-linecap="round" marker-end="url(#arrow-best)"></line>
+      ${sameMove ? "" : `<path class="arrow-played" d="${playedPath.d}" marker-end="url(#arrow-played)"></path>`}
+      <path class="arrow-best" d="${bestPath.d}" marker-end="url(#arrow-best)"></path>
+      ${sameMove ? `<text class="arrow-label best-label" x="${bestPath.labelX}" y="${bestPath.labelY}">best</text>` : `
+        <text class="arrow-label played-label" x="${playedPath.labelX}" y="${playedPath.labelY}">played</text>
+        <text class="arrow-label best-label" x="${bestPath.labelX}" y="${bestPath.labelY}">better</text>
+      `}
     </svg>
   `;
 }
@@ -1185,6 +1287,29 @@ function download(filename, text) {
   URL.revokeObjectURL(url);
 }
 
+function scrollActiveMove() {
+  setTimeout(() => {
+    const moveCard = document.querySelector(".move-card.active");
+    if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, 0);
+}
+
+function selectMoveIndex(index) {
+  if (!state.analysis) return;
+  state.selectedMove = Math.max(0, Math.min(state.analysis.items.length - 1, index));
+  render();
+  scrollActiveMove();
+}
+
+function findCriticalMove(start, direction) {
+  if (!state.analysis) return state.selectedMove;
+  const critical = new Set(["inaccuracy", "mistake", "blunder"]);
+  for (let i = start; i >= 0 && i < state.analysis.items.length; i += direction) {
+    if (critical.has(state.analysis.items[i].classification)) return i;
+  }
+  return state.selectedMove;
+}
+
 app.addEventListener("input", (event) => {
   if (event.target.id === "username") state.username = event.target.value.trim();
   if (event.target.id === "pgn") state.pgn = event.target.value;
@@ -1201,32 +1326,16 @@ document.addEventListener("keydown", (event) => {
   
   if (event.key === "ArrowRight" || event.key === "n") {
     event.preventDefault();
-    if (state.selectedMove < state.analysis.items.length - 1) {
-      state.selectedMove += 1;
-      render();
-      setTimeout(() => {
-        const moveCard = document.querySelector(`.move-card.active`);
-        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 0);
-    }
+    selectMoveIndex(state.selectedMove + 1);
   } else if (event.key === "ArrowLeft" || event.key === "p") {
     event.preventDefault();
-    if (state.selectedMove > 0) {
-      state.selectedMove -= 1;
-      render();
-      setTimeout(() => {
-        const moveCard = document.querySelector(`.move-card.active`);
-        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 0);
-    }
+    selectMoveIndex(state.selectedMove - 1);
   } else if (event.key === "Home") {
     event.preventDefault();
-    state.selectedMove = 0;
-    render();
+    selectMoveIndex(0);
   } else if (event.key === "End") {
     event.preventDefault();
-    state.selectedMove = state.analysis.items.length - 1;
-    render();
+    selectMoveIndex(state.analysis.items.length - 1);
   } else if (event.key === "f" || event.key === "F") {
     event.preventDefault();
     state.boardFlipped = !state.boardFlipped;
@@ -1278,8 +1387,12 @@ app.addEventListener("click", async (event) => {
     render();
     try {
       const archive = await jsonp(url);
-      state.games = (archive.games || []).slice().reverse();
+      state.games = (archive.games || []).slice().reverse().map((game) => ({
+        ...game,
+        chess8anInsight: { state: "scanning", label: "Scanning", count: 0 }
+      }));
       toast(`Loaded ${state.games.length} games.`);
+      enrichGameInsights(state.games);
     } catch (error) {
       toast(error.message || "Could not load that archive.");
     } finally {
@@ -1307,32 +1420,27 @@ app.addEventListener("click", async (event) => {
   }
 
   if (action === "select-move") {
-    state.selectedMove = Number(target.dataset.index);
-    render();
+    selectMoveIndex(Number(target.dataset.index));
   }
 
   if (action === "next-move") {
-    if (state.analysis && state.selectedMove < state.analysis.items.length - 1) {
-      state.selectedMove += 1;
-      render();
-      // Auto-scroll the move list to the selected move
-      setTimeout(() => {
-        const moveCard = document.querySelector(`.move-card.active`);
-        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 0);
-    }
+    selectMoveIndex(state.selectedMove + 1);
   }
 
   if (action === "prev-move") {
-    if (state.analysis && state.selectedMove > 0) {
-      state.selectedMove -= 1;
-      render();
-      // Auto-scroll the move list to the selected move
-      setTimeout(() => {
-        const moveCard = document.querySelector(`.move-card.active`);
-        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 0);
-    }
+    selectMoveIndex(state.selectedMove - 1);
+  }
+
+  if (action === "first-move") {
+    selectMoveIndex(0);
+  }
+
+  if (action === "last-move") {
+    selectMoveIndex(state.analysis ? state.analysis.items.length - 1 : 0);
+  }
+
+  if (action === "next-critical") {
+    selectMoveIndex(findCriticalMove(state.selectedMove + 1, 1));
   }
 
   if (action === "flip-board") {
