@@ -41,10 +41,13 @@ const SAMPLE_PGN = `[Event "Chess8an sample"]
 
 1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. c3 Nf6 5. d4 exd4 6. e5 d5 7. exf6 dxc4 8. O-O O-O 9. Bg5 Qd5 10. cxd4 Nxd4 11. Nc3 Nxf3+ 12. Qxf3 Qxg5 13. Ne4 Qd5 14. Rad1 Qf5 15. fxg7 Kxg7 16. Qc3+ f6 17. Qxc4 Bb6 18. Rd3 Be6 19. Rg3+ Kh8 20. Qe2 Rae8 21. Rf3 Qg6 22. Rg3 Qf5 23. Rf3 Qg4 24. h3 Qh5 25. Ng3 Qg6 26. Qd2 Bxa2 27. b3 Bb1 28. Qb4 Bd3 29. Rd1 Be2 30. Nxe2 Rg8 31. Ng3 Qxg3 32. Rxg3 1-0`;
 
+const savedSession = loadSessionUser();
+
 const state = {
   tab: "import",
-  username: "",
-  profile: null,
+  username: savedSession.username || "",
+  profile: savedSession.profile || null,
+  loggedIn: Boolean(savedSession.username),
   archives: [],
   games: [],
   selectedGameIndex: 0,
@@ -557,13 +560,51 @@ function scoreForMover(score, color) {
 }
 
 function classify(loss, move, best) {
-  if (loss <= 8 && move.san !== best.san && (move.move.capture || move.move.promotion)) return "brilliant";
   if (loss <= 15) return "best";
   if (loss <= 40) return "excellent";
   if (loss <= 90) return "good";
   if (loss <= 180) return "inaccuracy";
   if (loss <= 350) return "mistake";
   return "blunder";
+}
+
+function brilliantPatterns(item) {
+  if (!item || item.loss > 40) return [];
+  const patterns = [];
+  const move = item.move.move;
+  const mover = item.color;
+  const capturedValue = move.capture ? VALUES[move.capture.toUpperCase()] || 0 : 0;
+  const moverValue = VALUES[move.piece.toUpperCase()] || 0;
+  const bestAfter = makeMove(item.before, item.best.move);
+  const playedAfter = item.after;
+  const bestC = evaluateComponents(bestAfter);
+  const playedC = evaluateComponents(playedAfter);
+  const mobilityGain = scoreForMover(playedC.mobility - evaluateComponents(item.before).mobility, mover);
+  const activityMatch = scoreForMover(bestC.placement - playedC.placement, mover) <= 35;
+  const sacrificeLike = move.capture && capturedValue + 80 < moverValue;
+  const forcingMove = inCheck(playedAfter, playedAfter.turn) || move.promotion;
+
+  if (sacrificeLike) {
+    patterns.push("sound sacrifice: it gives up material but stays close to the engine's best line");
+  }
+  if (move.promotion) {
+    patterns.push("forcing promotion: the pawn becomes a new attacking piece without losing the evaluation");
+  }
+  if (inCheck(playedAfter, playedAfter.turn)) {
+    patterns.push("forcing check: the opponent must answer the king threat before playing their plan");
+  }
+  if ((sacrificeLike || forcingMove) && (mobilityGain > 25 || activityMatch)) {
+    patterns.push("activity compensation: the pieces gain activity or coordination that justifies the risk");
+  }
+  if ((sacrificeLike || forcingMove) && item.candidates.length > 1) {
+    const second = item.candidates[1];
+    const gap = Math.abs(scoreForMover(item.best.score - second.score, mover));
+    if (gap > 80) patterns.push("only-move feel: the best move is much stronger than the next practical choice");
+  }
+  if (item.loss <= 12 && (sacrificeLike || forcingMove)) {
+    patterns.push("engine confirmation: the tactic remains best or nearly best after calculation");
+  }
+  return [...new Set(patterns)].slice(0, 4);
 }
 
 function cp(score) {
@@ -602,7 +643,10 @@ function explainMove(item) {
   const lossText = item.loss <= 15 ? "The played move is essentially tied with the recommendation." : `The difference is about ${Math.round(item.loss)} centipawns for ${mover.toLowerCase()}.`;
   const piece = PIECE_NAMES[item.move.move.piece.toUpperCase()] || "piece";
   const bestPiece = PIECE_NAMES[item.best.move.piece.toUpperCase()] || "piece";
-  return `${mover} played ${item.playedSan} with the ${piece}. The recommended move is ${item.best.san}, using the ${bestPiece}; it ${themeText}. ${lossText} The arrows show the game move in amber and the recommendation in green so you can compare the two plans immediately.`;
+  const brilliantText = item.classification === "brilliant" && item.brilliantPatterns?.length
+    ? ` It is called brilliant here because it matches these patterns: ${item.brilliantPatterns.join("; ")}.`
+    : "";
+  return `${mover} played ${item.playedSan} with the ${piece}. The recommended move is ${item.best.san}, using the ${bestPiece}; it ${themeText}. ${lossText}${brilliantText} The arrows show the game move in amber and the recommendation in green so you can compare the two plans immediately.`;
 }
 
 async function analyzePgn(pgn, depth, maxPlies) {
@@ -635,6 +679,10 @@ async function analyzePgn(pgn, depth, maxPlies) {
       loss,
       classification: classify(loss, actual, best)
     };
+    item.brilliantPatterns = brilliantPatterns(item);
+    if (item.brilliantPatterns.length >= 2 && ["best", "excellent"].includes(item.classification)) {
+      item.classification = "brilliant";
+    }
     item.explanation = explainMove(item);
     items.push(item);
     setProgress(i + 1, total, `Analyzed ${i + 1} of ${total} moves`);
@@ -671,7 +719,7 @@ function scanGameBrilliance(game) {
   const pgn = game?.pgn || "";
   if (!pgn.trim()) return { state: "unknown", label: "No PGN", count: 0 };
   if (/brilliant/i.test(pgn) || /(^|\s)[KQRBNOa-h][^\s{}()[\]]*!!(?=\s|$)/.test(pgn)) {
-    return { state: "brilliant", label: "Brilliant marker", count: 1 };
+    return { state: "rated-brilliant", label: "Rated brilliant", count: 1 };
   }
   try {
     const parsed = playPgn(pgn);
@@ -695,7 +743,7 @@ function scanGameBrilliance(game) {
       if (count >= 2) break;
     }
     return count
-      ? { state: "brilliant", label: `${count} likely brilliant`, count }
+      ? { state: "likely-brilliant", label: `${count} likely brilliant`, count }
       : { state: "none", label: "No brilliant found", count: 0 };
   } catch {
     return { state: "unknown", label: "Scan unavailable", count: 0 };
@@ -760,6 +808,32 @@ function loadSaved() {
   } catch {
     return [];
   }
+}
+
+function loadSessionUser() {
+  try {
+    return JSON.parse(localStorage.getItem("chess8an:session") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveSessionUser(profile) {
+  const username = (profile?.username || state.username || "").trim();
+  if (!username) return;
+  localStorage.setItem("chess8an:session", JSON.stringify({ username, profile: profile || null }));
+  state.username = username;
+  state.profile = profile || state.profile;
+  state.loggedIn = true;
+}
+
+function clearSessionUser() {
+  localStorage.removeItem("chess8an:session");
+  state.loggedIn = false;
+  state.username = "";
+  state.profile = null;
+  state.archives = [];
+  state.games = [];
 }
 
 function saveSaved() {
@@ -837,16 +911,21 @@ function renderImport() {
     <section class="main-grid">
       <div class="side-stack">
         <article class="panel">
-          <h2>Chess.com Public Connect</h2>
-          <p class="section-note">Enter a Chess.com username to import public games. Official password login/OAuth is available only after Chess.com approves an OAuth application, so this app uses their free public API instead of asking for credentials.</p>
+          <div class="panel-title-row">
+            <div>
+              <h2>Chess.com Session</h2>
+              <p class="section-note">Save a Chess.com username as your local Chess8an login. It reconnects to public Chess.com data without storing a password.</p>
+            </div>
+            ${state.loggedIn ? `<span class="session-pill connected">Connected</span>` : `<span class="session-pill">Guest</span>`}
+          </div>
+          ${renderAccountPanel()}
           <div class="field-row">
             <label class="field">
               <span>Chess.com username</span>
               <input id="username" value="${escapeHtml(state.username)}" autocomplete="username" placeholder="hikaru" />
             </label>
-            <button class="primary-button" data-action="load-profile" type="button">Connect</button>
+            <button class="primary-button" data-action="load-profile" type="button">${state.loggedIn ? "Switch" : "Login"}</button>
           </div>
-          ${state.profile ? `<p class="small-note"><strong>${escapeHtml(state.profile.username || state.username)}</strong> loaded. Archives refresh on Chess.com roughly every 12 hours.</p>` : ""}
           ${renderArchives()}
         </article>
         <article class="panel">
@@ -867,6 +946,31 @@ function renderImport() {
         </div>
       </aside>
     </section>
+  `;
+}
+
+function renderAccountPanel() {
+  if (!state.loggedIn) {
+    return `
+      <div class="account-card guest">
+        <div>
+          <strong>No saved user</strong>
+          <span>Add your Chess.com username to save this session on the device.</span>
+        </div>
+      </div>
+    `;
+  }
+  const username = state.profile?.username || state.username;
+  const avatar = state.profile?.avatar || "";
+  return `
+    <div class="account-card">
+      <div class="account-avatar">${avatar ? `<img src="${escapeAttr(avatar)}" alt="" />` : username.slice(0, 1).toUpperCase()}</div>
+      <div class="account-info">
+        <strong>${escapeHtml(username)}</strong>
+        <span>Saved on this device. Archives refresh from Chess.com about every 12 hours.</span>
+      </div>
+      <button class="ghost-button danger" data-action="logout-profile" type="button">Log out</button>
+    </div>
   `;
 }
 
@@ -917,9 +1021,22 @@ function renderAnalyzeControls(action) {
 
 function gameInsightBadge(game) {
   const insight = game.chess8anInsight || { state: state.scanningGames ? "scanning" : "unknown", label: state.scanningGames ? "Scanning" : "Not scanned", count: 0 };
-  const label = insight.state === "brilliant" ? "Brilliant found" : insight.label;
-  const text = insight.state === "brilliant" ? "!!" : insight.state === "none" ? "0" : "...";
+  const label = insight.state === "rated-brilliant" ? "Rated brilliant" : insight.state === "likely-brilliant" ? "Likely brilliant" : insight.label;
+  const text = insight.state === "rated-brilliant" ? "!!" : insight.state === "likely-brilliant" ? "!?" : insight.state === "none" ? "0" : "...";
   return `<span class="brilliance-pill ${escapeAttr(insight.state)}" title="${escapeAttr(insight.label)}"><span class="brilliance-icon">${text}</span><span>${escapeHtml(label)}</span></span>`;
+}
+
+function gameOutcomeForUser(game) {
+  const username = (state.username || state.profile?.username || "").toLowerCase();
+  const white = game.white?.username?.toLowerCase();
+  const black = game.black?.username?.toLowerCase();
+  const side = username && white === username ? "white" : username && black === username ? "black" : "";
+  const result = side ? game[side]?.result : "";
+  const drawResults = new Set(["agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"]);
+  if (!side || !result) return { state: "neutral", label: "View" };
+  if (result === "win") return { state: "win", label: "Win" };
+  if (drawResults.has(result)) return { state: "draw", label: "Draw" };
+  return { state: "loss", label: "Loss" };
 }
 
 function renderGameCard(game, index) {
@@ -928,9 +1045,10 @@ function renderGameCard(game, index) {
   const result = `${game.white?.result || "?"}-${game.black?.result || "?"}`;
   const date = game.end_time ? new Date(game.end_time * 1000).toLocaleDateString() : "unknown date";
   const timeClass = game.time_class ? game.time_class.charAt(0).toUpperCase() + game.time_class.slice(1) : "Game";
-  const resultDisplay = game.white?.result === "win" ? "1-0" : game.black?.result === "win" ? "0-1" : "½-½";
+  const resultDisplay = game.white?.result === "win" ? "1-0" : game.black?.result === "win" ? "0-1" : "1/2-1/2";
+  const outcome = gameOutcomeForUser(game);
   return `
-    <article class="game-card">
+    <article class="game-card outcome-${outcome.state}">
       <div class="game-header">
         <div>
           <strong class="game-players">${escapeHtml(white)} vs ${escapeHtml(black)}</strong>
@@ -939,6 +1057,7 @@ function renderGameCard(game, index) {
         ${gameInsightBadge(game)}
       </div>
       <div class="game-meta">
+        <span class="outcome-pill ${escapeAttr(outcome.state)}">${escapeHtml(outcome.label)}</span>
         <span class="pill" title="Game time format">${escapeHtml(timeClass)}</span>
         <span class="pill" title="Result">${escapeHtml(result)}</span>
         <span class="pill" title="Date">${escapeHtml(date)}</span>
@@ -1027,7 +1146,7 @@ function renderReviewControls(item) {
 }
 
 function summaryPills(counts) {
-  const order = ["best", "excellent", "good", "inaccuracy", "mistake", "blunder"];
+  const order = ["brilliant", "best", "excellent", "good", "inaccuracy", "mistake", "blunder"];
   return order
     .filter((key) => counts[key])
     .map((key) => `<span class="pill ${pillTone(key)}">${key}: ${counts[key]}</span>`)
@@ -1147,6 +1266,15 @@ function renderMoveDetail(item) {
         <div class="detail-box">
           <p>${escapeHtml(item.explanation)}</p>
         </div>
+        ${isBrilliant ? `
+          <div class="brilliant-explainer">
+            <strong>Why this qualifies as brilliant</strong>
+            <ul>
+              ${(item.brilliantPatterns || []).map((pattern) => `<li>${escapeHtml(pattern)}</li>`).join("")}
+            </ul>
+            <p>A brilliant move should be tactical, hard to find, and still objectively strong after the forcing replies. Look for checks, captures, threats, sacrifices with compensation, and a clear follow-up plan.</p>
+          </div>
+        ` : ""}
         <div class="summary-strip">
           <span class="pill">Played: ${escapeHtml(item.playedSan)} (${cp(item.move.score)})</span>
           <span class="pill good">Better: ${escapeHtml(item.best.san)} (${cp(item.best.score)})</span>
@@ -1370,13 +1498,20 @@ app.addEventListener("click", async (event) => {
       ]);
       state.profile = profile;
       state.archives = archives.archives || [];
-      toast(`Connected to ${profile.username || state.username}.`);
+      saveSessionUser(profile);
+      toast(`Logged in as ${profile.username || state.username}.`);
     } catch (error) {
       toast(error.message || "Could not connect to Chess.com public data.");
     } finally {
       state.working = false;
       render();
     }
+  }
+
+  if (action === "logout-profile") {
+    clearSessionUser();
+    toast("Logged out from this device.");
+    render();
   }
 
   if (action === "load-archive") {

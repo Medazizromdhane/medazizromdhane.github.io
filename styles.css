@@ -161,6 +161,11 @@ textarea:disabled {
   background: var(--green);
 }
 
+.ghost-button.danger {
+  border-color: rgba(184, 65, 47, 0.5);
+  color: var(--red);
+}
+
 .icon-button {
   width: 42px;
   padding: 0;
@@ -197,6 +202,14 @@ textarea:disabled {
 
 .panel {
   padding: 18px;
+}
+
+.panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .panel h2,
@@ -308,6 +321,47 @@ textarea:focus {
 .game-card {
   display: grid;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.game-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(36, 32, 19, 0.55);
+}
+
+.game-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: rgba(102, 91, 67, 0.35);
+}
+
+.game-card.outcome-win {
+  background: linear-gradient(135deg, rgba(47, 111, 78, 0.1), rgba(255, 249, 231, 0.96) 42%);
+  border-color: rgba(47, 111, 78, 0.34);
+}
+
+.game-card.outcome-win::before {
+  background: var(--green);
+}
+
+.game-card.outcome-loss {
+  background: linear-gradient(135deg, rgba(184, 65, 47, 0.11), rgba(255, 249, 231, 0.96) 42%);
+  border-color: rgba(184, 65, 47, 0.34);
+}
+
+.game-card.outcome-loss::before {
+  background: var(--red);
+}
+
+.game-card.outcome-draw::before {
+  background: var(--amber);
 }
 
 .game-card strong,
@@ -351,6 +405,88 @@ textarea:focus {
 .pill.bad {
   color: var(--red);
   border-color: rgba(184, 65, 47, 0.28);
+}
+
+.session-pill,
+.outcome-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(36, 32, 19, 0.18);
+  background: rgba(255, 253, 244, 0.9);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.session-pill.connected,
+.outcome-pill.win {
+  background: rgba(47, 111, 78, 0.1);
+  border-color: rgba(47, 111, 78, 0.28);
+  color: var(--green);
+}
+
+.outcome-pill.loss {
+  background: rgba(184, 65, 47, 0.1);
+  border-color: rgba(184, 65, 47, 0.28);
+  color: var(--red);
+}
+
+.outcome-pill.draw {
+  background: rgba(217, 146, 17, 0.1);
+  border-color: rgba(217, 146, 17, 0.3);
+  color: var(--amber);
+}
+
+.account-card {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(36, 32, 19, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 244, 0.72);
+}
+
+.account-card.guest {
+  grid-template-columns: 1fr;
+}
+
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 1px solid var(--dark);
+  border-radius: 8px;
+  background: var(--gold);
+  color: var(--dark);
+  font-weight: 900;
+}
+
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-info,
+.account-card.guest div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.account-info span,
+.account-card.guest span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .board-panel {
@@ -863,6 +999,33 @@ textarea:focus {
   color: var(--ink);
 }
 
+.brilliant-explainer {
+  padding: 12px;
+  border: 1px solid rgba(47, 111, 78, 0.24);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(47, 111, 78, 0.1), rgba(255, 253, 244, 0.82));
+}
+
+.brilliant-explainer strong {
+  color: var(--green);
+}
+
+.brilliant-explainer ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.brilliant-explainer li,
+.brilliant-explainer p {
+  margin: 0 0 6px;
+  line-height: 1.45;
+}
+
+.brilliant-explainer p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* Smooth table styling */
 .candidate-table {
   width: 100%;
@@ -977,13 +1140,15 @@ textarea:focus {
   font-size: 11px;
 }
 
-.brilliance-pill.brilliant {
+.brilliance-pill.rated-brilliant,
+.brilliance-pill.likely-brilliant {
   border-color: rgba(47, 111, 78, 0.36);
   background: rgba(47, 111, 78, 0.09);
   color: var(--green);
 }
 
-.brilliance-pill.brilliant .brilliance-icon {
+.brilliance-pill.rated-brilliant .brilliance-icon,
+.brilliance-pill.likely-brilliant .brilliance-icon {
   background: var(--green);
   color: #fff9e7;
   box-shadow: 0 0 0 3px rgba(47, 111, 78, 0.12);

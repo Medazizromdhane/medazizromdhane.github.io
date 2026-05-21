@@ -72,7 +72,7 @@ vm.runInContext(
     const analysis = await analyzePgn(SAMPLE_PGN, 1, 8);
     if (analysis.items.length !== 8) throw new Error("Unexpected analysis item count.");
     const insight = scanGameBrilliance({ pgn: SAMPLE_PGN });
-    if (!["brilliant", "none", "unknown"].includes(insight.state)) throw new Error("Unexpected game insight state.");
+    if (!["rated-brilliant", "likely-brilliant", "none", "unknown"].includes(insight.state)) throw new Error("Unexpected game insight state.");
     console.log("Smoke test passed:", game.moves.length, "moves parsed,", candidates.length, "opening candidates.");
   })()
 `,
