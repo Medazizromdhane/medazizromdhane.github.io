@@ -870,13 +870,20 @@ function renderGameCard(game, index) {
   const black = game.black?.username || "Black";
   const result = `${game.white?.result || "?"}-${game.black?.result || "?"}`;
   const date = game.end_time ? new Date(game.end_time * 1000).toLocaleDateString() : "unknown date";
+  const timeClass = game.time_class ? game.time_class.charAt(0).toUpperCase() + game.time_class.slice(1) : "Game";
+  const resultDisplay = game.white?.result === "win" ? "1-0" : game.black?.result === "win" ? "0-1" : "½-½";
   return `
     <article class="game-card">
-      <strong>${escapeHtml(white)} vs ${escapeHtml(black)}</strong>
+      <div class="game-header">
+        <div>
+          <strong class="game-players">${escapeHtml(white)} vs ${escapeHtml(black)}</strong>
+          <p class="game-result-badge">${escapeHtml(resultDisplay)}</p>
+        </div>
+      </div>
       <div class="game-meta">
-        <span class="pill">${escapeHtml(game.time_class || "game")}</span>
-        <span class="pill">${escapeHtml(result)}</span>
-        <span class="pill">${escapeHtml(date)}</span>
+        <span class="pill" title="Game time format">${escapeHtml(timeClass)}</span>
+        <span class="pill" title="Result">${escapeHtml(result)}</span>
+        <span class="pill" title="Date">${escapeHtml(date)}</span>
       </div>
       <div class="button-row">
         <button class="ghost-button" data-action="select-game" data-index="${index}" type="button">Use PGN</button>
@@ -901,25 +908,30 @@ function renderAnalysis() {
   }
   const item = state.analysis.items[Math.min(state.selectedMove, state.analysis.items.length - 1)] || null;
   const score = item ? item.move.score : 0;
+  const brilliantCount = state.analysis.counts["brilliant"] || 0;
   return `
     <section class="workspace main-grid">
       <aside class="panel board-panel">
         <div class="analysis-header">
           <div>
-            <h2>${escapeHtml(state.analysis.title)}</h2>
-            <p class="section-note">${state.analysis.totalPlies} plies analyzed at depth ${state.analysis.depth}. Average loss: ${state.analysis.averageLoss} cp.</p>
+            <h2 class="analysis-title">${escapeHtml(state.analysis.title)}</h2>
+            <p class="section-note"><strong>${state.analysis.totalPlies}</strong> plies at depth <strong>${state.analysis.depth}</strong> • Average loss: <strong>${state.analysis.averageLoss} cp</strong></p>
+            ${brilliantCount > 0 ? `<p class="section-note highlight-note">✨ Found <strong>${brilliantCount}</strong> brilliant move${brilliantCount !== 1 ? "s" : ""}!</p>` : ""}
           </div>
           <div class="summary-strip">
             ${summaryPills(state.analysis.counts)}
           </div>
-          <div class="eval-bar" aria-label="Evaluation">
+          <div class="eval-bar" aria-label="Position Evaluation">
             <div class="eval-fill" style="width:${scorePercent(score)}%"></div>
             <div class="eval-label">${cp(score)}</div>
           </div>
           <div class="button-row">
-            <button class="icon-button" title="Flip board" data-action="flip-board" type="button">F</button>
+            <button class="icon-button" title="Flip board (F)" data-action="flip-board" type="button">F</button>
             <button class="ghost-button" data-action="save-analysis" type="button">Save</button>
             <button class="ghost-button" data-action="export-json" type="button">Export JSON</button>
+          </div>
+          <div class="keyboard-hint">
+            <span class="hint-small">Use ← → or P/N keys to navigate moves • Home/End for first/last move</span>
           </div>
         </div>
         ${renderBoard(item ? item.before : parseFen(START_FEN), item)}
@@ -927,7 +939,7 @@ function renderAnalysis() {
       <section class="side-stack">
         ${item ? renderMoveDetail(item) : ""}
         <article class="panel">
-          <h2>Move list</h2>
+          <h2 class="move-list-header">Move Analysis <span class="move-count">${state.selectedMove + 1}/${state.analysis.items.length}</span></h2>
           <div class="move-list">
             ${state.analysis.items.map(renderMoveCard).join("")}
           </div>
@@ -1010,9 +1022,25 @@ function renderArrows(item) {
 }
 
 function renderMoveDetail(item) {
+  const canGoPrev = item.index > 0;
+  const canGoNext = item.index < state.analysis.items.length - 1;
+  const isBrilliant = item.classification === "brilliant";
   return `
-    <article class="panel">
-      <h2>${item.moveNumber}${item.color === "b" ? "..." : "."} ${escapeHtml(item.playedSan)} <span class="classification ${item.classification}">${item.classification}</span></h2>
+    <article class="panel move-detail-panel">
+      <div class="move-header">
+        <h2 class="move-title">
+          <span class="move-number">${item.moveNumber}${item.color === "b" ? "..." : "."}</span>
+          <span class="move-notation">${escapeHtml(item.playedSan)}</span>
+          ${isBrilliant ? '<span class="brilliant-badge" title="Brilliant move">✨</span>' : ''}
+          <span class="classification ${item.classification}" title="${item.classification}">${item.classification}</span>
+        </h2>
+        <div class="move-progress">
+          <span class="progress-text">${item.index + 1} / ${state.analysis.items.length}</span>
+          <div class="progress-bar-slim">
+            <div class="progress-fill-slim" style="width: ${((item.index + 1) / state.analysis.items.length) * 100}%"></div>
+          </div>
+        </div>
+      </div>
       <div class="detail-grid">
         <div class="detail-box">
           <p>${escapeHtml(item.explanation)}</p>
@@ -1034,6 +1062,14 @@ function renderMoveDetail(item) {
             `).join("")}
           </tbody>
         </table>
+        <div class="move-navigation">
+          <button class="nav-button prev-button" data-action="prev-move" type="button" ${!canGoPrev ? "disabled" : ""} title="Previous move (←)">
+            <span class="nav-arrow">←</span> Previous
+          </button>
+          <button class="nav-button next-button" data-action="next-move" type="button" ${!canGoNext ? "disabled" : ""} title="Next move (→)">
+            Next <span class="nav-arrow">→</span>
+          </button>
+        </div>
       </div>
     </article>
   `;
@@ -1050,13 +1086,16 @@ function candidateIdea(pos, move) {
 }
 
 function renderMoveCard(item) {
+  const isBrilliant = item.classification === "brilliant";
   return `
-    <button class="move-card ${state.selectedMove === item.index ? "active" : ""}" data-action="select-move" data-index="${item.index}" type="button">
-      <strong>${item.moveNumber}${item.color === "b" ? "..." : "."} ${escapeHtml(item.playedSan)} -> ${escapeHtml(item.best.san)}</strong>
-      <div class="move-meta">
-        <span class="pill ${pillTone(item.classification)}">${item.classification}</span>
-        <span class="pill">loss ${Math.round(item.loss)} cp</span>
-        <span class="pill">eval ${cp(item.move.score)}</span>
+    <button class="move-card ${state.selectedMove === item.index ? "active" : ""} ${isBrilliant ? "brilliant" : ""}" data-action="select-move" data-index="${item.index}" type="button" title="Move ${item.index + 1}: ${item.playedSan} → ${item.best.san}">
+      <div class="move-card-content">
+        <strong>${item.moveNumber}${item.color === "b" ? "..." : "."} ${escapeHtml(item.playedSan)} ${isBrilliant ? '<span class="brilliant-tiny">✨</span>' : ''} → ${escapeHtml(item.best.san)}</strong>
+        <div class="move-meta">
+          <span class="pill ${pillTone(item.classification)}">${item.classification}</span>
+          <span class="pill">loss ${Math.round(item.loss)} cp</span>
+          <span class="pill">eval ${cp(item.move.score)}</span>
+        </div>
       </div>
     </button>
   `;
@@ -1156,6 +1195,45 @@ app.addEventListener("change", (event) => {
   if (event.target.id === "depth") state.depth = Number(event.target.value);
 });
 
+// Keyboard navigation for move analysis
+document.addEventListener("keydown", (event) => {
+  if (state.tab !== "analysis" || !state.analysis) return;
+  
+  if (event.key === "ArrowRight" || event.key === "n") {
+    event.preventDefault();
+    if (state.selectedMove < state.analysis.items.length - 1) {
+      state.selectedMove += 1;
+      render();
+      setTimeout(() => {
+        const moveCard = document.querySelector(`.move-card.active`);
+        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 0);
+    }
+  } else if (event.key === "ArrowLeft" || event.key === "p") {
+    event.preventDefault();
+    if (state.selectedMove > 0) {
+      state.selectedMove -= 1;
+      render();
+      setTimeout(() => {
+        const moveCard = document.querySelector(`.move-card.active`);
+        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 0);
+    }
+  } else if (event.key === "Home") {
+    event.preventDefault();
+    state.selectedMove = 0;
+    render();
+  } else if (event.key === "End") {
+    event.preventDefault();
+    state.selectedMove = state.analysis.items.length - 1;
+    render();
+  } else if (event.key === "f" || event.key === "F") {
+    event.preventDefault();
+    state.boardFlipped = !state.boardFlipped;
+    render();
+  }
+});
+
 app.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (!target) return;
@@ -1231,6 +1309,30 @@ app.addEventListener("click", async (event) => {
   if (action === "select-move") {
     state.selectedMove = Number(target.dataset.index);
     render();
+  }
+
+  if (action === "next-move") {
+    if (state.analysis && state.selectedMove < state.analysis.items.length - 1) {
+      state.selectedMove += 1;
+      render();
+      // Auto-scroll the move list to the selected move
+      setTimeout(() => {
+        const moveCard = document.querySelector(`.move-card.active`);
+        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 0);
+    }
+  }
+
+  if (action === "prev-move") {
+    if (state.analysis && state.selectedMove > 0) {
+      state.selectedMove -= 1;
+      render();
+      // Auto-scroll the move list to the selected move
+      setTimeout(() => {
+        const moveCard = document.querySelector(`.move-card.active`);
+        if (moveCard) moveCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 0);
+    }
   }
 
   if (action === "flip-board") {
